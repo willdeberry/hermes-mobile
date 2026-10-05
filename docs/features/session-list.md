@@ -26,7 +26,8 @@ Pinned/workspace/chronological. Rendered with a `clock`-icon header below the in
 sections, and **not shown during search** (search stays flat).
 
 **The Cron Jobs section groups runs under their *jobs*, desktop-style**: `GET /api/cron/jobs` is
-fetched sequentially INSIDE the session-load effect (after `.sessionsResponse`, same CancelID —
+fetched sequentially INSIDE the session-load effect (after `.profileSessionsResponse` or
+`.unscopedSessionsResponse`, same CancelID —
 deterministic TestStore order, no racy merge); a run session binds to its job via the
 id-embedded prefix (`cron_{job_id}_{ts}` → `CronJob.jobID(fromSessionID:)`) — upstream has a
 `/runs` endpoint, but the client groups from the already-fetched sessions so **older agents work
@@ -45,6 +46,61 @@ fallback below). **Capability-gated**: a 404 flips
 previous jobs (no flapping). Jobs are fetched with the LITERAL selected profile name when
 `profilesSupported` (matching the scoped session list, so a job's runs are actually present),
 unscoped otherwise.
+
+## Shared pin membership, local order
+
+`Session.pinned` is an optional server membership flag shared with Desktop; pin order stays
+**device-local** in `PreferencesClient.pinnedIDs`. Only a successful, current **profile-scoped
+list** reconciles membership: explicit `true` adds an ID, explicit `false` removes it except
+while protected by migration or a same-profile pending write, and missing/null preserves it.
+Existing insertion order is retained; new server pins append in response order. Absent IDs
+are not pruned; duplicate rows use the first occurrence. Search and unscoped responses never
+establish pin ownership or reconcile membership. The local ID cache is device-global, not a
+profile-ownership record.
+
+**Migrate before accepting server unpins.** Freeze legacy local IDs before importing server
+pins, with a durable checkpoint per server URL (trailing-slash normalized, independent of
+bearer-token changes). Pending IDs remain protected from server `false`; upload them only
+when trusted current-profile rows advertise explicit pin capability. Absent/nil rows remain
+pending. Checkpoint each successful upload separately; failures retain pending IDs for a
+later eligible list response to retry. Locally removed IDs retire only after no pin/removal
+operation can roll back. An empty checkpoint records completion; identity-pref clearing also
+clears migration checkpoints. Completion must match the server, checkpoint, mutation and
+attempt identity, and must never restore old pin or row snapshots.
+
+**Ownership precedes capability.** With profiles support, Pin/Unpin and its UI affordances
+require a non-search list whose provenance matches the selected profile. Search remains
+unscoped: selected profile, session ID, source string, cached membership, or an explicit pin
+flag cannot prove ownership. Modern search/unscoped/wrong-profile rows cannot write or fall
+back locally. For eligible rows:
+
+- Explicit `pinned` writes `{"pinned": true/false, "profile": "<selected name>"}` via
+  `PATCH /api/sessions/{id}`. Always pass the literal profile, including `"default"`, in
+  query and body rather than inheriting the server's active profile.
+- Missing/null `pinned` keeps Pin/Unpin device-local, per row; mixed responses still allow
+  server writes for explicit rows. There is no global pin-capability downgrade.
+- Without profiles support, Pin/Unpin stays device-local, including legacy search rows.
+  Both local fallback paths persist synchronously without PATCH, server-mutation bookkeeping,
+  or fetch invalidation.
+
+All paths require an existing row with no same-ID pin/archive/delete operation in flight.
+**Writes are serialized per ID, not globally**; unrelated rows remain actionable. Server
+writes optimistically persist membership. Failure restores only that ID's membership and
+order, using ordering anchors for overlapping unpins rather than a stale preference snapshot.
+Newer authoritative membership from another profile prevents an old-context rollback.
+
+Fetch profile/query/generation checks reject stale results and wrong-context ownership.
+Same-profile pending writes are protected during reconciliation. A user write invalidates
+and cancels the fetch without losing pending refresh intent; success or failure invalidates
+stale responses again and restarts a pending current-context list or active search. Migration
+completion likewise invalidates stale fetches and restarts a pending load/search.
+
+**Same-ID removal is rejected while a pin write (including migration) is pending**, before
+local removal, preference persistence, cache/slot delegates, or REST effects. Main-list
+archive/delete confirmation and archived-sheet delete show “Wait for the pin change to
+finish, then try again.” The parent delegate also guards removal, and the sheet mirrors
+pending pin IDs on presentation and write start/completion. After completion, a new removal
+attempt is allowed; removal is never queued automatically.
 
 ## Shared unread state
 

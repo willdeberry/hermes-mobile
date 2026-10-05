@@ -167,9 +167,14 @@ struct SessionListCronTests {
     await store.send(.pulledToRefresh) {
       $0.now = self.now
       $0.isLoading = true
+      $0.sessionFetchGeneration += 1
     }
-    await store.receive(\.sessionsResponse.success) {
+    await store.receive {
+      guard case let .profileSessionsResponse("work", "", 1, .success(sessions)) = $0 else { return false }
+      return sessions == [run]
+    } assert: {
       $0.isLoading = false
+      $0.sessionsProfileName = "work"
       $0.sessions = [self.cronSession("job1", stamp: "20260702_090000")]
       $0.seenCounts = ["cron_job1_20260702_090000": 1]  // cron sessions ARE seeded (issue #24 gap 1)
     }
@@ -197,8 +202,12 @@ struct SessionListCronTests {
     await store.send(.pulledToRefresh) {
       $0.now = self.now
       $0.isLoading = true
+      $0.sessionFetchGeneration += 1
     }
-    await store.receive(\.sessionsResponse.success) {
+    await store.receive {
+      guard case let .unscopedSessionsResponse("default", "", 1, false, .success(sessions)) = $0 else { return false }
+      return sessions.isEmpty
+    } assert: {
       $0.isLoading = false
     }
     await store.receive(\.cronJobsResponse.failure) {
@@ -208,8 +217,12 @@ struct SessionListCronTests {
     // The flag is definitive: the next refresh fetches sessions only.
     await store.send(.pulledToRefresh) {
       $0.isLoading = true
+      $0.sessionFetchGeneration += 1
     }
-    await store.receive(\.sessionsResponse.success) {
+    await store.receive {
+      guard case let .unscopedSessionsResponse("default", "", 2, false, .success(sessions)) = $0 else { return false }
+      return sessions.isEmpty
+    } assert: {
       $0.isLoading = false
     }
     #expect(fetchCount.value == 1)
@@ -233,8 +246,12 @@ struct SessionListCronTests {
     await store.send(.pulledToRefresh) {
       $0.now = self.now
       $0.isLoading = true
+      $0.sessionFetchGeneration += 1
     }
-    await store.receive(\.sessionsResponse.success) {
+    await store.receive {
+      guard case let .unscopedSessionsResponse("default", "", 1, false, .success(sessions)) = $0 else { return false }
+      return sessions.isEmpty
+    } assert: {
       $0.isLoading = false
     }
     // No state change: previous jobs survive a transient failure (no section flapping).
@@ -260,8 +277,12 @@ struct SessionListCronTests {
     await store.send(.pulledToRefresh) {
       $0.now = self.now
       $0.isLoading = true
+      $0.sessionFetchGeneration += 1
     }
-    await store.receive(\.sessionsResponse.success) {
+    await store.receive {
+      guard case let .unscopedSessionsResponse("default", "", 1, false, .success(sessions)) = $0 else { return false }
+      return sessions.isEmpty
+    } assert: {
       $0.isLoading = false
     }
     await store.receive(\.cronJobsResponse.success)
@@ -309,8 +330,12 @@ struct SessionListCronTests {
       $0.cronActionInFlightIDs = []
       $0.now = self.now
       $0.isLoading = true  // trigger → FULL load so the new run session appears
+      $0.sessionFetchGeneration = 1
     }
-    await store.receive(\.sessionsResponse.success) {
+    await store.receive {
+      guard case let .unscopedSessionsResponse("default", "", 1, false, .success(sessions)) = $0 else { return false }
+      return sessions.isEmpty
+    } assert: {
       $0.isLoading = false
     }
     await store.receive(\.cronJobsResponse.success) {

@@ -28,6 +28,8 @@ public struct ArchivedSessionsFeature {
     public var restoringIDs: Set<String>
     /// Ids whose permanent DELETE is in flight — same double-tap/refresh guard as restore.
     public var deletingIDs: Set<String>
+    /// Mirrored by the parent: same-session pin writes must finish before removal.
+    public var pendingPinIDs: Set<String> = []
     /// Whether the agent has the `DELETE /api/sessions/{id}` endpoint. Seeded from the
     /// session list's flag when the sheet is presented; a definitive 404/405 here flips
     /// it off for the rest of the sheet's lifetime (and mirrors back to the list via
@@ -179,7 +181,12 @@ public struct ArchivedSessionsFeature {
         return .none
 
       case let .deleteButtonTapped(id):
-        guard state.deleteSupported, let index = state.sessions.index(id: id) else { return .none }
+        guard state.deleteSupported else { return .none }
+        guard !state.pendingPinIDs.contains(id) else {
+          state.loadError = "Wait for the pin change to finish, then try again."
+          return .none
+        }
+        guard let index = state.sessions.index(id: id) else { return .none }
         // Immediate — no confirmation dialog (planning decision; see the action doc).
         // Optimistic removal + in-flight guard; the DELETE itself is the PARENT's (see
         // the delegate case doc — a presented child's effect dies with the sheet), handed

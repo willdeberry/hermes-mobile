@@ -212,8 +212,12 @@ bullets below are the compressed rules.
 - **Persistence**: secrets → `KeychainClient`; non-secret prefs (URL, seen counts,
   pins, grouping, profile) → `PreferencesClient`. Clients over `@Shared` for test
   isolation; both have `.inMemory()`. **Logout must clear every prefs entry.**
-- **Pins are device-local; archive, rename, and delete are server-side**, optimistic
-  with rollback (list → REST `PATCH`/`DELETE`; chat rename → `session.title`).
+- **Pin membership is shared; pin order stays device-local.** Only trusted, capable
+  profile-backed list rows may synchronize pins; preserve legacy local pins and never infer
+  ownership from search or cached membership. Migration, fallback, pending-write, rollback,
+  and refresh rules live in `docs/features/session-list.md`.
+- Archive, rename, and delete are also server-side with rollback (list → REST `PATCH`/`DELETE`;
+  chat rename → `session.title`).
 - **Delete (#73) mirrors archive** (`deletingIDs` guard, rollback) with a
   `deleteSupported` flip on 404 **or 405** (older agents serve the path for
   `PATCH`/`GET`) — silent, mirrored both ways with the archived sheet; the swipe-default
