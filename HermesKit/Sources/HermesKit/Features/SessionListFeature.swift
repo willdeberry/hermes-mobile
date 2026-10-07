@@ -395,6 +395,12 @@ public struct SessionListFeature {
     /// endpoint sessions are grouped by source. Pinned and cron rows stay in their
     /// existing dedicated sections.
     public var desktopSections: [DesktopSessionSection] {
+      desktopSections(using: .autoupdatingCurrent)
+    }
+
+    /// Builds the desktop-style sections using an explicit calendar so date-boundary behavior
+    /// remains deterministic in tests and callers can match their locale's week rules.
+    public func desktopSections(using calendar: Calendar) -> [DesktopSessionSection] {
       let pinned = Set(pinnedIDs)
       let candidates = interactiveSessions.filter { !pinned.contains($0.id) }
       let local = candidates.filter { $0.source?.trimmedNonEmpty == nil }
@@ -402,7 +408,6 @@ public struct SessionListFeature {
         guard let source = session.source?.trimmedNonEmpty else { return nil }
         return (source, session)
       }
-      let calendar = Calendar.autoupdatingCurrent
       var sections: [DesktopSessionSection] = []
       var localBuckets: [(SessionGroupingMode.DesktopDateBucket, Int?, Int?, [Session])] = []
       var bucketIndexes: [String: Int] = [:]

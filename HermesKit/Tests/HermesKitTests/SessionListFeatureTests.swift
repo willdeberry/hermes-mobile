@@ -3738,12 +3738,16 @@ struct SessionListFeatureTests {
   }
 
   @Test func desktopSectionsGroupLocalSessionsByRecencyAndEndpointsBySource() {
-    let calendar = Calendar.autoupdatingCurrent
-    let today = calendar.startOfDay(for: Date())
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    calendar.firstWeekday = 2 // Monday, matching the desktop week boundary.
+    let today = calendar.date(from: DateComponents(year: 2025, month: 6, day: 11))!
     let sessions = [
       Session(id: "today", updatedAt: today.addingTimeInterval(3600)),
       Session(id: "today-child", updatedAt: today.addingTimeInterval(1800), parentSessionID: "today"),
       Session(id: "yesterday", updatedAt: calendar.date(byAdding: .day, value: -1, to: today)),
+      Session(id: "cross-section-child", updatedAt: calendar.date(byAdding: .day, value: -1, to: today), parentSessionID: "today"),
+      Session(id: "whitespace-source", updatedAt: today, source: "   "),
       Session(id: "endpoint", updatedAt: today, source: "discord"),
       Session(id: "unknown-endpoint", updatedAt: today, source: "matrix"),
       Session(id: "cron", updatedAt: today, source: "cron"),
@@ -3754,11 +3758,16 @@ struct SessionListFeatureTests {
       now: today
     )
 
-    #expect(state.desktopSections.map(\.title) == ["Today", "Yesterday", "DISCORD", "MATRIX"])
-    #expect(state.desktopSections[0].sessions.map(\.id) == ["today", "today-child"])
-    #expect(state.desktopSections[1].sessions.map(\.id) == ["yesterday"])
-    #expect(state.desktopSections[2].sessions.map(\.id) == ["endpoint"])
-    #expect(state.desktopSections.contains { $0.sessions.contains(where: { $0.id == "cron" }) } == false)
+    let sections = state.desktopSections(using: calendar)
+    #expect(sections.map(\.title) == ["Today", "Yesterday", "DISCORD", "MATRIX"])
+    #expect(sections[0].sessions.map(\.id) == ["today", "today-child", "whitespace-source"])
+    #expect(sections[0].entries.map(\.id) == ["today", "today-child", "whitespace-source"])
+    #expect(sections[0].entries[1].branchStem == "└─ ")
+    #expect(sections[0].entries[2].branchStem == nil)
+    #expect(sections[1].sessions.map(\.id) == ["yesterday", "cross-section-child"])
+    #expect(sections[1].entries[1].branchStem == nil)
+    #expect(sections[2].sessions.map(\.id) == ["endpoint"])
+    #expect(sections.contains { $0.sessions.contains(where: { $0.id == "cron" }) } == false)
   }
 
   @Test func desktopSectionsKeepPinnedSessionsOutOfDateAndEndpointBuckets() {
@@ -3779,8 +3788,10 @@ struct SessionListFeatureTests {
   }
 
   @Test func desktopSectionsBucketOlderLocalSessionsAndSortEndpointRows() {
-    let calendar = Calendar.autoupdatingCurrent
-    let today = calendar.startOfDay(for: Date())
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+    calendar.firstWeekday = 2 // Monday, matching the desktop week boundary.
+    let today = calendar.date(from: DateComponents(year: 2025, month: 6, day: 11))!
     let earlierThisWeek = calendar.date(byAdding: .day, value: -2, to: today)!
     let lastWeek = calendar.date(byAdding: .day, value: -8, to: today)!
     let priorMonth = calendar.date(byAdding: .month, value: -1, to: today)!
@@ -3797,12 +3808,14 @@ struct SessionListFeatureTests {
       now: today
     )
 
-    #expect(state.desktopSections.map(\.title).prefix(3) == [
-      "Earlier this week", "Last week", calendar.monthSymbols[calendar.component(.month, from: priorMonth) - 1],
+    let sections = state.desktopSections(using: calendar)
+    let monthTitle = sections[2].title
+    #expect(sections.map(\.title).prefix(3) == [
+      "Earlier this week", "Last week", monthTitle,
     ])
-    #expect(state.desktopSections.contains { $0.title == calendar.monthSymbols[calendar.component(.month, from: priorMonth) - 1] })
-    #expect(state.desktopSections.last?.title == "DISCORD")
-    #expect(state.desktopSections.last?.sessions.map(\.id) == ["discord-new", "discord-old"])
+    #expect(sections[2].kind == .date(.month, month: calendar.component(.month, from: priorMonth), year: calendar.component(.year, from: priorMonth)))
+    #expect(sections.last?.title == "DISCORD")
+    #expect(sections.last?.sessions.map(\.id) == ["discord-new", "discord-old"])
   }
 
   @Test func loadSeedsGroupingModeFromPreferences() async {

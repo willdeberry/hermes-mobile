@@ -137,10 +137,46 @@ struct SessionListView: View {
   /// budget.
   @ViewBuilder
   private var sessionListContent: some View {
-    // Top-level "Sessions" section header. Future sibling areas (e.g. "Cron jobs")
-    // render their own header the same way, all scoped to the active profile pill.
+    if store.groupingMode == .desktopSections {
+      desktopSessionListContent
+    } else {
+      sessionsSectionHeader
+      pinnedSection
+      switch store.groupingMode {
+      case .workspace:
+        ForEach(store.groups) { group in
+          groupSection(group)
+        }
+      case .chronological:
+        ForEach(store.chronologicalEntries) { entry in
+          row(entry)
+        }
+      case .desktopSections:
+        EmptyView()
+      }
+      cronSectionIfNeeded
+    }
+  }
+
+  @ViewBuilder
+  private var desktopSessionListContent: some View {
+    pinnedSection
     sessionsSectionHeader
-    // Pinned sessions float to the top in both grouping modes.
+    ForEach(store.desktopSections) { section in
+      Section {
+        ForEach(section.entries) { entry in
+          row(entry)
+        }
+      } header: {
+        Text(section.title)
+          .textCase(.uppercase)
+      }
+    }
+    cronSectionIfNeeded
+  }
+
+  @ViewBuilder
+  private var pinnedSection: some View {
     if !store.pinnedSessions.isEmpty {
       Section("Pinned") {
         ForEach(store.pinnedEntries) { entry in
@@ -148,33 +184,10 @@ struct SessionListView: View {
         }
       }
     }
-    switch store.groupingMode {
-    case .workspace:
-      ForEach(store.groups) { group in
-        groupSection(group)
-      }
-    case .chronological:
-      // One last-active-ordered list — no workspace headers; branches nest under
-      // their parent with elbow stems.
-      ForEach(store.chronologicalEntries) { entry in
-        row(entry)
-      }
-    case .desktopSections:
-      ForEach(store.desktopSections) { section in
-        Section {
-          ForEach(section.entries) { entry in
-            row(entry)
-          }
-        } header: {
-          Text(section.title)
-            .textCase(.uppercase)
-        }
-      }
-    }
-    // Cron-scheduled sessions live in their own always-on section below the
-    // interactive list, in both grouping modes (filtered out of pinned/groups/
-    // chronological by the reducer). Hidden when there are none, or when the
-    // user turned the section off in the organize menu.
+  }
+
+  @ViewBuilder
+  private var cronSectionIfNeeded: some View {
     if store.showCronSection, !store.cronSessions.isEmpty {
       cronJobsSection
     }
