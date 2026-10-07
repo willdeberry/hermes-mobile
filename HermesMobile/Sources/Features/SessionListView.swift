@@ -159,6 +159,17 @@ struct SessionListView: View {
       ForEach(store.chronologicalEntries) { entry in
         row(entry)
       }
+    case .desktopSections:
+      ForEach(store.desktopSections) { section in
+        Section {
+          ForEach(section.entries) { entry in
+            row(entry)
+          }
+        } header: {
+          Text(section.title)
+            .textCase(.uppercase)
+        }
+      }
     }
     // Cron-scheduled sessions live in their own always-on section below the
     // interactive list, in both grouping modes (filtered out of pinned/groups/
@@ -436,6 +447,7 @@ struct SessionListView: View {
       ) {
         Label("By workspace", systemImage: "folder").tag(SessionGroupingMode.workspace)
         Label("Chronological", systemImage: "clock").tag(SessionGroupingMode.chronological)
+        Label("Desktop sections", systemImage: "rectangle.3.group").tag(SessionGroupingMode.desktopSections)
       }
       .pickerStyle(.inline)
 

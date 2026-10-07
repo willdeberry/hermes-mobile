@@ -3728,8 +3728,81 @@ struct SessionListFeatureTests {
     }
     #expect(prefs.loadGroupingMode() == .chronological) // persisted
 
+    await store.send(.setGroupingMode(.desktopSections)) {
+      $0.groupingMode = .desktopSections
+    }
+    #expect(prefs.loadGroupingMode() == .desktopSections) // persisted
+
     // Re-sending the same mode is a no-op (no state change).
-    await store.send(.setGroupingMode(.chronological))
+    await store.send(.setGroupingMode(.desktopSections))
+  }
+
+  @Test func desktopSectionsGroupLocalSessionsByRecencyAndEndpointsBySource() {
+    let calendar = Calendar.autoupdatingCurrent
+    let today = calendar.startOfDay(for: Date())
+    let sessions = [
+      Session(id: "today", updatedAt: today.addingTimeInterval(3600)),
+      Session(id: "today-child", updatedAt: today.addingTimeInterval(1800), parentSessionID: "today"),
+      Session(id: "yesterday", updatedAt: calendar.date(byAdding: .day, value: -1, to: today)),
+      Session(id: "endpoint", updatedAt: today, source: "discord"),
+      Session(id: "unknown-endpoint", updatedAt: today, source: "matrix"),
+      Session(id: "cron", updatedAt: today, source: "cron"),
+    ]
+    let state = SessionListFeature.State(
+      connection: connection,
+      sessions: IdentifiedArray(uniqueElements: sessions),
+      now: today
+    )
+
+    #expect(state.desktopSections.map(\.title) == ["Today", "Yesterday", "DISCORD", "MATRIX"])
+    #expect(state.desktopSections[0].sessions.map(\.id) == ["today", "today-child"])
+    #expect(state.desktopSections[1].sessions.map(\.id) == ["yesterday"])
+    #expect(state.desktopSections[2].sessions.map(\.id) == ["endpoint"])
+    #expect(state.desktopSections.contains { $0.sessions.contains(where: { $0.id == "cron" }) } == false)
+  }
+
+  @Test func desktopSectionsKeepPinnedSessionsOutOfDateAndEndpointBuckets() {
+    let now = Date(timeIntervalSince1970: 1_000_000)
+    let sessions = [
+      Session(id: "pinned", updatedAt: now, source: "discord"),
+      Session(id: "regular", updatedAt: now),
+    ]
+    let state = SessionListFeature.State(
+      connection: connection,
+      sessions: IdentifiedArray(uniqueElements: sessions),
+      now: now,
+      pinnedIDs: ["pinned"]
+    )
+
+    #expect(state.pinnedSessions.map(\.id) == ["pinned"])
+    #expect(state.desktopSections.flatMap { $0.sessions.map(\.id) } == ["regular"])
+  }
+
+  @Test func desktopSectionsBucketOlderLocalSessionsAndSortEndpointRows() {
+    let calendar = Calendar.autoupdatingCurrent
+    let today = calendar.startOfDay(for: Date())
+    let earlierThisWeek = calendar.date(byAdding: .day, value: -2, to: today)!
+    let lastWeek = calendar.date(byAdding: .day, value: -8, to: today)!
+    let priorMonth = calendar.date(byAdding: .month, value: -1, to: today)!
+    let sessions = [
+      Session(id: "early", updatedAt: earlierThisWeek),
+      Session(id: "last", updatedAt: lastWeek),
+      Session(id: "month", updatedAt: priorMonth),
+      Session(id: "discord-old", updatedAt: today.addingTimeInterval(3600), source: "discord"),
+      Session(id: "discord-new", updatedAt: today.addingTimeInterval(7200), source: "discord"),
+    ]
+    let state = SessionListFeature.State(
+      connection: connection,
+      sessions: IdentifiedArray(uniqueElements: sessions),
+      now: today
+    )
+
+    #expect(state.desktopSections.map(\.title).prefix(3) == [
+      "Earlier this week", "Last week", calendar.monthSymbols[calendar.component(.month, from: priorMonth) - 1],
+    ])
+    #expect(state.desktopSections.contains { $0.title == calendar.monthSymbols[calendar.component(.month, from: priorMonth) - 1] })
+    #expect(state.desktopSections.last?.title == "DISCORD")
+    #expect(state.desktopSections.last?.sessions.map(\.id) == ["discord-new", "discord-old"])
   }
 
   @Test func loadSeedsGroupingModeFromPreferences() async {

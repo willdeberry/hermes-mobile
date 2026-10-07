@@ -391,6 +391,85 @@ public struct SessionListFeature {
       }
     }
 
+    /// Desktop-style sections: local sessions are bucketed by recency, then non-cron
+    /// endpoint sessions are grouped by source. Pinned and cron rows stay in their
+    /// existing dedicated sections.
+    public var desktopSections: [DesktopSessionSection] {
+      let pinned = Set(pinnedIDs)
+      let candidates = interactiveSessions.filter { !pinned.contains($0.id) }
+      let local = candidates.filter { $0.source?.trimmedNonEmpty == nil }
+      let endpointSessions = candidates.compactMap { session -> (String, Session)? in
+        guard let source = session.source?.trimmedNonEmpty else { return nil }
+        return (source, session)
+      }
+      let calendar = Calendar.autoupdatingCurrent
+      var sections: [DesktopSessionSection] = []
+      var localBuckets: [(SessionGroupingMode.DesktopDateBucket, Int?, Int?, [Session])] = []
+      var bucketIndexes: [String: Int] = [:]
+
+      for session in local.sorted(by: Self.sessionRecencyOrder) {
+        let key = Self.desktopDateKey(for: session.updatedAt, now: now, calendar: calendar)
+        if let index = bucketIndexes[key.id] {
+          localBuckets[index].3.append(session)
+        } else {
+          bucketIndexes[key.id] = localBuckets.count
+          localBuckets.append((key.bucket, key.month, key.year, [session]))
+        }
+      }
+
+      for (bucket, month, year, sessions) in localBuckets {
+        let title: String
+        if bucket == .month, let month, (1...12).contains(month) {
+          title = calendar.monthSymbols[month - 1]
+        } else if bucket == .month {
+          title = "Older"
+        } else {
+          title = bucket.defaultTitle
+        }
+        sections.append(.init(
+          kind: .date(bucket, month: month, year: year), title: title, sessions: sessions
+        ))
+      }
+
+      var endpointOrder: [String] = []
+      var groupedEndpoints: [String: [Session]] = [:]
+      for (source, session) in endpointSessions.sorted(by: { Self.sessionRecencyOrder($0.1, $1.1) }) {
+        if groupedEndpoints[source] == nil { endpointOrder.append(source) }
+        groupedEndpoints[source, default: []].append(session)
+      }
+      sections.append(contentsOf: endpointOrder.map { source in
+        .init(
+          kind: .source(source), title: source.uppercased(),
+          sessions: groupedEndpoints[source] ?? []
+        )
+      })
+      return sections
+    }
+
+    private static func sessionRecencyOrder(_ lhs: Session, _ rhs: Session) -> Bool {
+      (lhs.updatedAt ?? .distantPast) > (rhs.updatedAt ?? .distantPast)
+    }
+
+    private static func desktopDateKey(
+      for date: Date?, now: Date, calendar: Calendar
+    ) -> (bucket: SessionGroupingMode.DesktopDateBucket, month: Int?, year: Int?, id: String) {
+      guard let date else { return (.month, nil, nil, "older") }
+      let today = calendar.startOfDay(for: now)
+      let day = calendar.startOfDay(for: date)
+      let dayDelta = calendar.dateComponents([.day], from: day, to: today).day ?? 0
+      if dayDelta <= 0 { return (.today, nil, nil, "today") }
+      if dayDelta == 1 { return (.yesterday, nil, nil, "yesterday") }
+      let weekdayToday = calendar.component(.weekday, from: today)
+      let daysSinceWeekStart = (weekdayToday - calendar.firstWeekday + 7) % 7
+      let weekStart = calendar.date(byAdding: .day, value: -daysSinceWeekStart, to: today) ?? today
+      if day >= weekStart { return (.earlierThisWeek, nil, nil, "earlier-this-week") }
+      let lastWeekStart = calendar.date(byAdding: .day, value: -7, to: weekStart) ?? weekStart
+      if day >= lastWeekStart { return (.lastWeek, nil, nil, "last-week") }
+      let month = calendar.component(.month, from: date)
+      let year = calendar.component(.year, from: date)
+      return (.month, month, year, "month-\(year)-\(month)")
+    }
+
     /// Pinned sessions resolved from `pinnedIDs`, in pin order; stale ids are dropped. Cron
     /// sessions are excluded (they belong to the Cron Jobs section), even if pinned.
     public var pinnedSessions: [Session] {
