@@ -403,9 +403,10 @@ public struct SessionListFeature {
     public func desktopSections(using calendar: Calendar) -> [DesktopSessionSection] {
       let pinned = Set(pinnedIDs)
       let candidates = interactiveSessions.filter { !pinned.contains($0.id) }
-      let local = candidates.filter { $0.source?.trimmedNonEmpty == nil }
+      let local = candidates.filter { Self.isLocalSession($0) }
       let endpointSessions = candidates.compactMap { session -> (String, Session)? in
-        guard let source = session.source?.trimmedNonEmpty else { return nil }
+        guard let source = session.source?.trimmedNonEmpty,
+              !Self.localSessionSources.contains(source.lowercased()) else { return nil }
         return (source, session)
       }
       var sections: [DesktopSessionSection] = []
@@ -449,6 +450,13 @@ public struct SessionListFeature {
         )
       })
       return sections
+    }
+
+    private static let localSessionSources: Set<String> = ["desktop", "tui", "cli"]
+
+    private static func isLocalSession(_ session: Session) -> Bool {
+      guard let source = session.source?.trimmedNonEmpty else { return true }
+      return localSessionSources.contains(source.lowercased())
     }
 
     private static func sessionRecencyOrder(_ lhs: Session, _ rhs: Session) -> Bool {

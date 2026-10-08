@@ -3748,6 +3748,9 @@ struct SessionListFeatureTests {
       Session(id: "yesterday", updatedAt: calendar.date(byAdding: .day, value: -1, to: today)),
       Session(id: "cross-section-child", updatedAt: calendar.date(byAdding: .day, value: -1, to: today), parentSessionID: "today"),
       Session(id: "whitespace-source", updatedAt: today, source: "   "),
+      Session(id: "desktop-session", updatedAt: today, source: "desktop"),
+      Session(id: "tui-session", updatedAt: today, source: "tui"),
+      Session(id: "cli-session", updatedAt: today, source: "cli"),
       Session(id: "endpoint", updatedAt: today, source: "discord"),
       Session(id: "unknown-endpoint", updatedAt: today, source: "matrix"),
       Session(id: "cron", updatedAt: today, source: "cron"),
@@ -3760,10 +3763,17 @@ struct SessionListFeatureTests {
 
     let sections = state.desktopSections(using: calendar)
     #expect(sections.map(\.title) == ["Today", "Yesterday", "DISCORD", "MATRIX"])
-    #expect(sections[0].sessions.map(\.id) == ["today", "today-child", "whitespace-source"])
-    #expect(sections[0].entries.map(\.id) == ["today", "today-child", "whitespace-source"])
+    #expect(sections[0].sessions.map(\.id) == [
+      "today", "today-child", "whitespace-source", "desktop-session", "tui-session", "cli-session",
+    ])
+    #expect(sections[0].entries.map(\.id) == [
+      "today", "today-child", "whitespace-source", "desktop-session", "tui-session", "cli-session",
+    ])
     #expect(sections[0].entries[1].branchStem == "└─ ")
     #expect(sections[0].entries[2].branchStem == nil)
+    #expect(sections.contains { $0.kind == .source("desktop") } == false)
+    #expect(sections.contains { $0.kind == .source("tui") } == false)
+    #expect(sections.contains { $0.kind == .source("cli") } == false)
     #expect(sections[1].sessions.map(\.id) == ["yesterday", "cross-section-child"])
     #expect(sections[1].entries[1].branchStem == nil)
     #expect(sections[2].sessions.map(\.id) == ["endpoint"])
