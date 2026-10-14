@@ -257,6 +257,8 @@ public struct SessionInfo: Equatable, Sendable, Decodable {
   public var version: String?
   public var cwd: String?
   public var profileName: String?
+  /// Raw wire value so a future policy does not break decoding the entire session.
+  public var approvalMode: String?
   public var usage: Usage?
   /// The session's live title. Deliberately read in ONE place: the post-slash
   /// server-authoritative refresh (`.slashHistoryRefreshed`) applies it on top of
@@ -268,12 +270,13 @@ public struct SessionInfo: Equatable, Sendable, Decodable {
     case model, running, version, cwd, usage, title
     case reasoningEffort = "reasoning_effort"
     case profileName = "profile_name"
+    case approvalMode = "approval_mode"
   }
 
   public init(
     model: String? = nil, reasoningEffort: String? = nil, running: Bool? = nil,
     version: String? = nil, cwd: String? = nil, profileName: String? = nil, usage: Usage? = nil,
-    title: String? = nil
+    title: String? = nil, approvalMode: String? = nil
   ) {
     self.model = model
     self.reasoningEffort = reasoningEffort
@@ -283,6 +286,7 @@ public struct SessionInfo: Equatable, Sendable, Decodable {
     self.profileName = profileName
     self.usage = usage
     self.title = title
+    self.approvalMode = approvalMode
   }
 }
 
